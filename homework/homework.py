@@ -96,7 +96,6 @@
 # {'type': 'cm_matrix', 'dataset': 'train', 'true_0': {"predicted_0": 15562, "predicte_1": 666}, 'true_1': {"predicted_0": 3333, "predicted_1": 1444}}
 # {'type': 'cm_matrix', 'dataset': 'test', 'true_0': {"predicted_0": 15562, "predicte_1": 650}, 'true_1': {"predicted_0": 2490, "predicted_1": 1420}}
 #
-
 import numpy as np
 import pandas as pd
 import json
@@ -110,6 +109,8 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
+from sklearn.feature_selection import SelectKBest, f_classif
+from sklearn.decomposition import PCA
 from sklearn.metrics import (
     precision_score, 
     recall_score,
@@ -153,20 +154,33 @@ class ModelBuilder:
             ('numeric', StandardScaler(), numeric_cols)
         ])
         
-        return Pipeline([
-            ('preprocess', preprocessor),
-            ('classifier', MLPClassifier(
-                hidden_layer_sizes=(50, 30, 40, 60),
-                max_iter=15000,
-                alpha=0.26,
-                learning_rate_init=0.001,
-                random_state=21
-            ))
+        pipeline = Pipeline([
+            ('preprocessor', preprocessor),
+            ('feature_selection', SelectKBest(score_func=f_classif)),
+            ('pca', PCA()),
+            ('classifier', MLPClassifier(max_iter=15000, random_state=21))
         ])
+        
+        param_grid = {
+            "pca__n_components": [None],
+            "feature_selection__k": [20],
+            "classifier__hidden_layer_sizes": [(50, 30, 40, 60)],
+            "classifier__alpha": [0.26],
+            'classifier__learning_rate_init': [0.001],
+        }
+        
+        return GridSearchCV(
+            estimator=pipeline,
+            param_grid=param_grid,
+            cv=10,
+            scoring='balanced_accuracy',
+            n_jobs=-1,
+            refit=True
+        )
     
     def train_model(self, X, y):
-        pipeline = self.create_feature_pipeline(X)
-        return pipeline.fit(X, y)
+        grid_search = self.create_feature_pipeline(X)
+        return grid_search.fit(X, y)
 
 class MetricsCalculator:
     @staticmethod
